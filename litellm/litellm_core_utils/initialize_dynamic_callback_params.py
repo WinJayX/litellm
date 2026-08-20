@@ -46,7 +46,7 @@ def validate_no_callback_env_reference(param: str, value: object, *, source: str
 
 
 # Hardcoded list of supported callback params to avoid runtime inspection issues with TypedDict
-_supported_callback_params: Final = [
+_supported_callback_params: Final = (
     "langfuse_public_key",
     "langfuse_secret",
     "langfuse_secret_key",
@@ -72,8 +72,10 @@ _supported_callback_params: Final = [
     "dd_site",
     "dd_agent_host",
     "dd_agent_port",
+    "newrelic_api_key",
+    "newrelic_region",
     "turn_off_message_logging",
-]
+)
 
 _request_blocked_callback_params: Final = frozenset(
     {
@@ -83,6 +85,20 @@ _request_blocked_callback_params: Final = frozenset(
         "dd_site",
         "dd_agent_host",
         "dd_agent_port",
+        "newrelic_api_key",
+        "newrelic_region",
+    }
+)
+
+# Request-blocked params that must still reach ``standard_callback_dynamic_params``
+# when the proxy itself stamped them from admin-configured team/key callback
+# settings (the trusted-vars channel). The OTel per-tenant tracer routing reads
+# ``standard_callback_dynamic_params``, so without this overlay a blocked param
+# could never drive routing at all.
+_trusted_overlay_callback_params: Final = frozenset(
+    {
+        "newrelic_api_key",
+        "newrelic_region",
     }
 )
 
@@ -131,5 +147,9 @@ def initialize_standard_callback_dynamic_params(
                     _param_value = metadata.get(param)
                     validate_no_callback_env_reference(param, _param_value, source=slot_label)
                     standard_callback_dynamic_params[param] = _param_value
+
+        for param, trusted_value in get_trusted_callback_params(kwargs):
+            if param in _trusted_overlay_callback_params:
+                standard_callback_dynamic_params[param] = trusted_value
 
     return standard_callback_dynamic_params
